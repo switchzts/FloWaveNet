@@ -5,26 +5,24 @@ import os
 import librosa
 from multiprocessing import cpu_count
 import argparse
-
+import glob
 
 def build_from_path(in_dir, out_dir, num_workers=1):
     executor = ProcessPoolExecutor(max_workers=num_workers)
     futures = []
     index = 1
-    with open(os.path.join(in_dir, 'metadata.csv'), encoding='utf-8') as f:
-        for line in f:
-            parts = line.strip().split('|')
-            wav_path = os.path.join(in_dir, 'wavs', '%s.wav' % parts[0])
-            text = parts[2]
-            futures.append(executor.submit(
-                partial(_process_utterance, out_dir, index, wav_path, text)))
-            index += 1
+    wav_files = glob.glob(os.path.join(in_dir, '*.wav'))
+    wav_files.sort(key = str.lower)
+    for wav_file in wav_files:
+        task = partial(_process_utterance, out_dir, index, wav_file)
+        futures.append(executor.submit(task))
+        index += 1
     return [future.result() for future in futures]
 
 
-def _process_utterance(out_dir, index, wav_path, text):
+def _process_utterance(out_dir, index, wav_path):
     # Load the audio to a numpy array:
-    wav, sr = librosa.load(wav_path, sr=22050)
+    wav, sr = librosa.load(wav_path, sr=16000)
 
     wav = wav / np.abs(wav).max() * 0.999
     out = wav
@@ -37,8 +35,7 @@ def _process_utterance(out_dir, index, wav_path, text):
 
     # Compute a mel-scale spectrogram from the trimmed wav:
     # (N, D)
-    mel_spectrogram = librosa.feature.melspectrogram(wav, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=80,
-                                                     fmin=125, fmax=7600).T
+    mel_spectrogram = librosa.feature.melspectrogram(wav, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=80, fmin=125, fmax=7600).T
 
     # mel_spectrogram = np.round(mel_spectrogram, decimals=2)
     mel_spectrogram = 20 * np.log10(np.maximum(1e-4, mel_spectrogram)) - reference
@@ -70,7 +67,7 @@ def _process_utterance(out_dir, index, wav_path, text):
             mel_spectrogram.astype(np.float32), allow_pickle=False)
 
     # Return a tuple describing this training example:
-    return audio_filename, mel_filename, timesteps, text
+    return audio_filename, mel_filename, timesteps
 
 
 def preprocess(in_dir, out_dir, num_workers):
@@ -84,10 +81,9 @@ def write_metadata(metadata, out_dir):
         for m in metadata:
             f.write('|'.join([str(x) for x in m]) + '\n')
     frames = sum([m[2] for m in metadata])
-    sr = 22050
+    sr = 16000
     hours = frames / sr / 3600
     print('Wrote %d utterances, %d time steps (%.2f hours)' % (len(metadata), frames, hours))
-    print('Max input length:  %d' % max(len(m[3]) for m in metadata))
     print('Max output length: %d' % max(m[2] for m in metadata))
 
 

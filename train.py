@@ -171,7 +171,7 @@ def synthesize(model):
             wav = y_gen.to(torch.device("cpu")).data.numpy()
             wav_name = '{}/{}/generate_{}_{}.wav'.format(args.sample_path, args.model_name, global_step, batch_idx)
             print('{} seconds'.format(time.time() - start_time))
-            librosa.output.write_wav(wav_name, wav, sr=22050)
+            librosa.output.write_wav(wav_name, wav, sr=16000)
             print('{} Saved!'.format(wav_name))
             del x, c, z, q_0, y_gen, wav
 
